@@ -3,7 +3,6 @@ import time
 
 
 def solve_factories_bdd_dd():
-    # Спрашиваем режим работы
     print("Выберите режим работы:")
     print("0 - Без склейки")
     print("1 - Со склейкой")
@@ -19,29 +18,25 @@ def solve_factories_bdd_dd():
         print("Неверный ввод, используется режим по умолчанию: Без склейки")
         with_wrap = False
 
-    # Константы
-    N = 9  # 9 заводов
-    M = 4  # 4 свойства
-    T = 4  # ceil(log2(9)) = 4 бита
+    N = 9
+    M = 4
+    T = 4
 
-    # Property indices
     COUNTRY, COMPANY, POWER, COLOR = 0, 1, 2, 3
 
-    # Значения свойств
     countries = ["Япония", "Германия", "Франция", "Китай", "Корея",
                  "Италия", "Англия", "США", "Россия"]
-    companies = ["HONDA", "Porsche", "Peugeot", "Geely", "KIA",
+    companies = ["Honda", "Porsche", "Peugeot", "Geely", "Kia",
                  "Ferrari", "Jaguar", "Ford", "Lada"]
     powers = ["100", "110", "130", "170", "250", "410", "730", "850", "955"]
     colors = ["Красный", "Зеленый", "Синий", "Белый", "Черный",
               "Бежевый", "Фиолетовый", "Розовый", "Желтый"]
 
-    # Словари для преобразования названий в индексы
     property_dict = {
-        "COUNTRY": COUNTRY, "СТРАНА": COUNTRY,
-        "COMPANY": COMPANY, "КОМПАНИЯ": COMPANY,
-        "POWER": POWER, "МОЩНОСТЬ": POWER,
-        "COLOR": COLOR, "ЦВЕТ": COLOR
+        "COUNTRY": COUNTRY,
+        "COMPANY": COMPANY,
+        "POWER": POWER,
+        "COLOR": COLOR,
     }
 
     value_dicts = {
@@ -51,15 +46,11 @@ def solve_factories_bdd_dd():
         COLOR: {name: idx for idx, name in enumerate(colors)}
     }
 
-    # Открываем файл для записи
-    output_file = open("factory_solutions.txt", "w", encoding="utf-8")
+    output_file = open("solutions.txt", "w", encoding="utf-8")
     output_file.write(f"Режим работы: {'Со склейкой' if with_wrap else 'Без склейки'}\n")
 
-    # Инициализация BDD
     bdd = _bdd.BDD()
-    print(f"Creating {N * M * T} variables...")
 
-    # Создаем переменные
     var_names = []
     for i in range(N):
         for k in range(M):
@@ -69,11 +60,9 @@ def solve_factories_bdd_dd():
 
     bdd.declare(*var_names)
 
-    # Функция для получения имени переменной
     def var_name(factory, property, bit):
         return f'x_{factory}_{property}_{bit}'
 
-    # Кодируем функцию p(k, i, j)
     def encode_p(property, factory, value):
         if value < 0 or value >= N:
             return bdd.false
@@ -86,8 +75,6 @@ def solve_factories_bdd_dd():
                 expr = expr & ~bdd.var(var)
         return expr
 
-    # Создаем матрицу p[k][i][j]
-    print("Encoding P function...")
     p = [[[None for _ in range(N)] for _ in range(N)] for _ in range(M)]
 
     for k in range(M):
@@ -97,7 +84,6 @@ def solve_factories_bdd_dd():
 
     task = bdd.true
 
-    print("Adding domain constraints...")
     for i in range(N):
         for k in range(M):
             exactly_one = bdd.false
@@ -111,23 +97,14 @@ def solve_factories_bdd_dd():
 
             task = task & exactly_one & mutually_exclusive
 
-    print("Setting up neighbors...")
-
-    # Определяем соседей в зависимости от режима
     if with_wrap:
-        # Со склейкой
         northeast_neighbors = [(3, 1), (4, 2), (5, 0), (6, 4), (7, 5), (8, 3)]
         southeast_neighbors = [(0, 4), (1, 5), (2, 3), (3, 7), (4, 8), (5, 6)]
     else:
-        # Без склейки
         northeast_neighbors = [(3, 1), (4, 2), (6, 4), (7, 5)]
         southeast_neighbors = [(0, 4), (1, 5), (3, 7), (4, 8)]
 
     adjacent_neighbors = northeast_neighbors + southeast_neighbors
-
-    print(f"  Северо-восточных соседей: {len(northeast_neighbors)}")
-    print(f"  Юго-восточных соседей: {len(southeast_neighbors)}")
-    print(f"  Всего соседских пар: {len(adjacent_neighbors)}")
 
     def get_property_index(property_name):
         return property_dict[property_name.upper()]
@@ -144,7 +121,7 @@ def solve_factories_bdd_dd():
         task = task & p[property_idx][factory][value_idx]
 
         property_names = {COUNTRY: "Страна", COMPANY: "Компания", POWER: "Мощность", COLOR: "Цвет"}
-        description = f"Завод {factory} - {property_names[property_idx]} {value_name}"
+        description = f"Цех {factory} - {property_names[property_idx]} {value_name}"
         print(f"   {description}")
         return description
 
@@ -206,8 +183,7 @@ def solve_factories_bdd_dd():
         print(f"   {description}")
         return description
 
-    # TYPE n1 Constraints - ФИКСИРОВАННЫЕ ЗНАЧЕНИЯ
-    print("Adding n1 constraints (fixed values)...")
+    print("Ограничения первого типа:")
     add_n1_constraint(0, "COUNTRY", "Япония")
     add_n1_constraint(1, "COUNTRY", "Франция")
     add_n1_constraint(4, "POWER", "250")
@@ -219,11 +195,10 @@ def solve_factories_bdd_dd():
     if with_wrap:
         add_n1_constraint(0, "COLOR", "Зеленый")
 
-    # TYPE n2 Constraints - ЛОГИЧЕСКИЕ СЛЕДСТВИЯ
-    print("Adding n2 constraints (logical implications)...")
+    print("Ограничения второго типа:")
     add_n2_constraint("COUNTRY", "Англия", "POWER", "410")
     add_n2_constraint("COUNTRY", "США", "COLOR", "Синий")
-    add_n2_constraint("COUNTRY", "Корея", "COMPANY", "KIA")
+    add_n2_constraint("COUNTRY", "Корея", "COMPANY", "Kia")
     add_n2_constraint("POWER", "130", "COLOR", "Черный")
     add_n2_constraint("COMPANY", "Geely", "POWER", "100")
     add_n2_constraint("COMPANY", "Jaguar", "COLOR", "Зеленый")
@@ -231,10 +206,9 @@ def solve_factories_bdd_dd():
     if not with_wrap:
         add_n2_constraint("COMPANY", "Peugeot", "POWER", "110")
 
-    # TYPE n3 Constraints - ОТНОСИТЕЛЬНЫЕ ПОЗИЦИИ
-    print("Adding n3 constraints (relative positions)...")
+    print("Ограничения третьего типа:")
     add_n3_constraint_relative("southeast", "COUNTRY", "Франция", "COMPANY", "Lada")
-    add_n3_constraint_relative("northeast", "COMPANY", "KIA", "COLOR", "Розовый")
+    add_n3_constraint_relative("northeast", "COMPANY", "Kia", "COLOR", "Розовый")
     add_n3_constraint_relative("northeast", "COUNTRY", "Германия", "COMPANY", "Ford")
     add_n3_constraint_relative("southeast", "COUNTRY", "Китай", "COMPANY", "Peugeot")
 
@@ -243,8 +217,7 @@ def solve_factories_bdd_dd():
     else:
         add_n3_constraint_relative("southeast", "COLOR", "Красный", "POWER", "100")
 
-    # TYPE n4 Constraints - СОСЕДСКИЕ ОТНОШЕНИЯ
-    print("Adding n4 constraints (neighbor relations)...")
+    print("Ограничения четвертого типа:")
     add_n4_constraint_neighbors("COUNTRY", "Корея", "COLOR", "Бежевый")
     add_n4_constraint_neighbors("POWER", "130", "COLOR", "Фиолетовый")
     add_n4_constraint_neighbors("COUNTRY", "Китай", "COUNTRY", "Япония")
@@ -255,8 +228,8 @@ def solve_factories_bdd_dd():
     if with_wrap:
         add_n4_constraint_neighbors("COMPANY", "Jaguar", "POWER", "850")
 
-    # Ограничения уникальности
-    print("Adding uniqueness constraints...")
+
+    print("Уникальность:")
     for k in range(4):
         property_names = ["Страна", "Компания", "Мощность", "Цвет"]
         print(f"  Свойство {property_names[k]}...")
@@ -265,18 +238,12 @@ def solve_factories_bdd_dd():
                 for i2 in range(i1 + 1, N):
                     task = task & ~(p[k][i1][j] & p[k][i2][j])
 
-    print("All constraints built")
-    print("Solving...")
-
-    # Проверяем выполнимость
     if task == bdd.false:
-        print("No solutions found! Constraints are inconsistent.")
+        print("\nРешения не найдены! Ограничения противоречивы.")
         output_file.write("Решения не найдены! Ограничения противоречивы.\n")
         output_file.close()
         return
 
-    # Поиск решений
-    print("Finding solutions...")
 
     def decode_solution(model, factory, property):
         value = 0
@@ -301,13 +268,11 @@ def solve_factories_bdd_dd():
     valid_solutions = 0
     max_solutions = 2000
 
-    # Определяем максимальные длины для выравнивания
     max_country_len = max(len(country) for country in countries)
     max_company_len = max(len(company) for company in companies)
     max_power_len = max(len(power) for power in powers)
     max_color_len = max(len(color) for color in colors)
 
-    # Вычисляем ширину ячейки
     cell_width = max_country_len + max_company_len + max_power_len + max_color_len + 3
 
     for model in solutions:
@@ -327,10 +292,8 @@ def solve_factories_bdd_dd():
 
             solution_data.append((country_name, company_name, power_name, color_name))
 
-        # Вывод в файл - матричный формат с выравниванием
         output_file.write(f"\n--- Решение {valid_solutions} ---\n")
 
-        # Верхняя граница таблицы
         separator = "+" + "-" * (cell_width + 2) + "+" + "-" * (cell_width + 2) + "+" + "-" * (cell_width + 2) + "+\n"
         output_file.write(separator)
 
@@ -339,22 +302,19 @@ def solve_factories_bdd_dd():
             for col in range(3):
                 idx = row * 3 + col
                 country, company, power, color = solution_data[idx]
-                # Форматируем ячейку с выравниванием
                 cell_content = f" {country:<{max_country_len}} {company:<{max_company_len}} {power:>{max_power_len}} {color:<{max_color_len}} "
                 line += cell_content + "|"
             output_file.write(line + "\n")
 
-            # Добавляем разделитель между строками (кроме последней)
             if row < 2:
                 output_file.write(separator)
 
-        # Нижняя граница таблицы
         output_file.write(separator)
 
         if valid_solutions >= max_solutions:
             break
 
-    print(f"\nTotal solutions found: {valid_solutions}")
+    print(f"\nВсего найдено решений: {valid_solutions}")
     output_file.write(f"\nВсего найдено решений: {valid_solutions}\n")
     output_file.write(f"Режим работы: {'Со склейкой' if with_wrap else 'Без склейки'}\n")
     output_file.close()
