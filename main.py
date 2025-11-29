@@ -3,7 +3,21 @@ import time
 
 
 def solve_factories_bdd_dd():
-    print("Starting Factory BDD Solver with dd library")
+    # Спрашиваем режим работы
+    print("Выберите режим работы:")
+    print("0 - Без склейки")
+    print("1 - Со склейкой")
+
+    mode = input("Введите 0 или 1: ").strip()
+    if mode == "0":
+        print("Режим: Без склейки")
+        with_wrap = False
+    elif mode == "1":
+        print("Режим: Со склейкой")
+        with_wrap = True
+    else:
+        print("Неверный ввод, используется режим по умолчанию: Без склейки")
+        with_wrap = False
 
     # Константы
     N = 9  # 9 заводов
@@ -21,6 +35,25 @@ def solve_factories_bdd_dd():
     powers = ["100", "110", "130", "170", "250", "410", "730", "850", "955"]
     colors = ["Красный", "Зеленый", "Синий", "Белый", "Черный",
               "Бежевый", "Фиолетовый", "Розовый", "Желтый"]
+
+    # Словари для преобразования названий в индексы
+    property_dict = {
+        "COUNTRY": COUNTRY, "СТРАНА": COUNTRY,
+        "COMPANY": COMPANY, "КОМПАНИЯ": COMPANY,
+        "POWER": POWER, "МОЩНОСТЬ": POWER,
+        "COLOR": COLOR, "ЦВЕТ": COLOR
+    }
+
+    value_dicts = {
+        COUNTRY: {name: idx for idx, name in enumerate(countries)},
+        COMPANY: {name: idx for idx, name in enumerate(companies)},
+        POWER: {name: idx for idx, name in enumerate(powers)},
+        COLOR: {name: idx for idx, name in enumerate(colors)}
+    }
+
+    # Открываем файл для записи
+    output_file = open("factory_solutions.txt", "w", encoding="utf-8")
+    output_file.write(f"Режим работы: {'Со склейкой' if with_wrap else 'Без склейки'}\n")
 
     # Инициализация BDD
     bdd = _bdd.BDD()
@@ -62,19 +95,15 @@ def solve_factories_bdd_dd():
             for j in range(N):
                 p[k][i][j] = encode_p(k, i, j)
 
-    # Инициализируем задачу
     task = bdd.true
 
-    # БАЗОВЫЕ ОГРАНИЧЕНИЯ: каждый завод имеет ровно одно значение для каждого свойства
     print("Adding domain constraints...")
     for i in range(N):
         for k in range(M):
-            # Завод i должен иметь ровно одно значение свойства k
             exactly_one = bdd.false
             for j in range(N):
                 exactly_one = exactly_one | p[k][i][j]
 
-            # И все значения взаимоисключающие
             mutually_exclusive = bdd.true
             for j1 in range(N):
                 for j2 in range(j1 + 1, N):
@@ -84,161 +113,153 @@ def solve_factories_bdd_dd():
 
     print("Setting up neighbors...")
 
-    northeast_neighbors = [(3, 1), (4, 2), (5, 0), (6, 4), (7, 5), (8, 3)]
-    southeast_neighbors = [(0, 4), (1, 5), (2, 3), (3, 7), (4, 8), (5, 6)]
+    # Определяем соседей в зависимости от режима
+    if with_wrap:
+        # Со склейкой
+        northeast_neighbors = [(3, 1), (4, 2), (5, 0), (6, 4), (7, 5), (8, 3)]
+        southeast_neighbors = [(0, 4), (1, 5), (2, 3), (3, 7), (4, 8), (5, 6)]
+    else:
+        # Без склейки
+        northeast_neighbors = [(3, 1), (4, 2), (6, 4), (7, 5)]
+        southeast_neighbors = [(0, 4), (1, 5), (3, 7), (4, 8)]
+
     adjacent_neighbors = northeast_neighbors + southeast_neighbors
+
+    print(f"  Северо-восточных соседей: {len(northeast_neighbors)}")
+    print(f"  Юго-восточных соседей: {len(southeast_neighbors)}")
+    print(f"  Всего соседских пар: {len(adjacent_neighbors)}")
+
+    def get_property_index(property_name):
+        return property_dict[property_name.upper()]
+
+    def get_value_index(property_name, value_name):
+        property_idx = get_property_index(property_name)
+        return value_dicts[property_idx][value_name]
+
+    def add_n1_constraint(factory, property_name, value_name):
+        nonlocal task
+        property_idx = get_property_index(property_name)
+        value_idx = get_value_index(property_name, value_name)
+
+        task = task & p[property_idx][factory][value_idx]
+
+        property_names = {COUNTRY: "Страна", COMPANY: "Компания", POWER: "Мощность", COLOR: "Цвет"}
+        description = f"Завод {factory} - {property_names[property_idx]} {value_name}"
+        print(f"   {description}")
+        return description
+
+    def add_n2_constraint(property_from_name, value_from_name, property_to_name, value_to_name):
+        nonlocal task
+        property_from = get_property_index(property_from_name)
+        value_from = get_value_index(property_from_name, value_from_name)
+        property_to = get_property_index(property_to_name)
+        value_to = get_value_index(property_to_name, value_to_name)
+
+        for i in range(N):
+            task = task & bdd.apply('->', p[property_from][i][value_from], p[property_to][i][value_to])
+
+        description = f"{value_from_name} -> {value_to_name}"
+        print(f"   {description}")
+        return description
+
+    def add_n3_constraint_relative(direction, from_property_name, from_value_name, to_property_name, to_value_name):
+        nonlocal task
+        from_property = get_property_index(from_property_name)
+        from_value = get_value_index(from_property_name, from_value_name)
+        to_property = get_property_index(to_property_name)
+        to_value = get_value_index(to_property_name, to_value_name)
+
+        constraint = bdd.false
+
+        if direction == "southeast":
+            neighbors_list = southeast_neighbors
+            dir_text = "юго-восточнее"
+        elif direction == "northeast":
+            neighbors_list = northeast_neighbors
+            dir_text = "северо-восточнее"
+        else:
+            raise ValueError("Направление должно быть 'southeast' или 'northeast'")
+
+        for from_, to in neighbors_list:
+            constraint = constraint | (p[from_property][from_][from_value] & p[to_property][to][to_value])
+
+        task = task & constraint
+
+        description = f"{to_value_name} находится {dir_text} {from_value_name}"
+        print(f"   {description}")
+        return description
+
+    def add_n4_constraint_neighbors(property1_name, value1_name, property2_name, value2_name):
+        nonlocal task
+        property1 = get_property_index(property1_name)
+        value1 = get_value_index(property1_name, value1_name)
+        property2 = get_property_index(property2_name)
+        value2 = get_value_index(property2_name, value2_name)
+
+        constraint = bdd.false
+        for a, b in adjacent_neighbors:
+            constraint = constraint | (p[property1][a][value1] & p[property2][b][value2]) | (
+                    p[property1][b][value1] & p[property2][a][value2])
+        task = task & constraint
+
+        description = f"{value1_name} соседствует с {value2_name}"
+        print(f"   {description}")
+        return description
 
     # TYPE n1 Constraints - ФИКСИРОВАННЫЕ ЗНАЧЕНИЯ
     print("Adding n1 constraints (fixed values)...")
-    # 1. Завод 0 (левый верхний) - Япония (0)
-    task = task & p[COUNTRY][0][0]
-    print("   1.Завод 0 - Япония")
-    # 2. Завод 1 (середина верхней строки) - Франция (2)
-    task = task & p[COUNTRY][1][2]
-    print("   2.Завод 1 - Франция")
-    # 3. Завод 4 (центр) - мощность 250 л.с. (4)
-    task = task & p[POWER][4][4]
-    print("   3.Завод 4 - мощность 250 л.с.")
-    # 4. Завод 8 (правый нижний) - желтый цвет (8)
-    task = task & p[COLOR][8][8]
-    print("   4.Завод 8 - желтый цвет")
-    # 5. Завод 2 (правый верхний) - Ferrari (5)
-    task = task & p[COMPANY][2][5]
-    print("   5.Завод 2 - Ferrari")
-    # 6. Завод 2 (правый верхний) - белый цвет (3)
-    task = task & p[COLOR][2][3]
-    print("   6.Завод 2 - белый цвет")
-    # 7. Завод 1 (середина верхней строки) - мощность 170 л.с. (3)
-    task = task & p[POWER][1][3]
-    print("   7.Завод 1 - мощность 170 л.с.")
-    # 8. Завод 0 (левый верхний) - зеленый цвет (1)
-    task = task & p[COLOR][0][1]
-    print("   8.Завод 0 - зеленый цвет")
+    add_n1_constraint(0, "COUNTRY", "Япония")
+    add_n1_constraint(1, "COUNTRY", "Франция")
+    add_n1_constraint(4, "POWER", "250")
+    add_n1_constraint(8, "COLOR", "Желтый")
+    add_n1_constraint(2, "COMPANY", "Ferrari")
+    add_n1_constraint(2, "COLOR", "Белый")
+    add_n1_constraint(1, "POWER", "170")
+
+    if with_wrap:
+        add_n1_constraint(0, "COLOR", "Зеленый")
 
     # TYPE n2 Constraints - ЛОГИЧЕСКИЕ СЛЕДСТВИЯ
     print("Adding n2 constraints (logical implications)...")
-    print("   1.Англия -> мощность 410 л.с.")
-    print("   2.США -> синий цвет")
-    print("   3.Корея -> KIA")
-    print("   4.Мощность 130 л.с. -> черный цвет")
-    print("   5.Geely -> мощность 100 л.с.")
-    print("   6.Jaguar -> зеленый цвет")
-    for i in range(N):
-        # 9. Англия (6) -> мощность 410 л.с. (5)
-        task = task & bdd.apply('->', p[COUNTRY][i][6], p[POWER][i][5])
+    add_n2_constraint("COUNTRY", "Англия", "POWER", "410")
+    add_n2_constraint("COUNTRY", "США", "COLOR", "Синий")
+    add_n2_constraint("COUNTRY", "Корея", "COMPANY", "KIA")
+    add_n2_constraint("POWER", "130", "COLOR", "Черный")
+    add_n2_constraint("COMPANY", "Geely", "POWER", "100")
+    add_n2_constraint("COMPANY", "Jaguar", "COLOR", "Зеленый")
 
-        # 10. США (7) -> синий цвет (2)
-        task = task & bdd.apply('->', p[COUNTRY][i][7], p[COLOR][i][2])
-
-        # 11. Корея (4) -> KIA (4)
-        task = task & bdd.apply('->', p[COUNTRY][i][4], p[COMPANY][i][4])
-
-        # 12. Мощность 130 л.с. (2) -> черный цвет (4)
-        task = task & bdd.apply('->', p[POWER][i][2], p[COLOR][i][4])
-
-        # 13. Geely (3) -> мощность 100 л.с. (0)
-        task = task & bdd.apply('->', p[COMPANY][i][3], p[POWER][i][0])
-
-        # 14. Jaguar (6) -> зеленый цвет (1)
-        task = task & bdd.apply('->', p[COMPANY][i][6], p[COLOR][i][1])
-
-
-
+    if not with_wrap:
+        add_n2_constraint("COMPANY", "Peugeot", "POWER", "110")
 
     # TYPE n3 Constraints - ОТНОСИТЕЛЬНЫЕ ПОЗИЦИИ
     print("Adding n3 constraints (relative positions)...")
+    add_n3_constraint_relative("southeast", "COUNTRY", "Франция", "COMPANY", "Lada")
+    add_n3_constraint_relative("northeast", "COMPANY", "KIA", "COLOR", "Розовый")
+    add_n3_constraint_relative("northeast", "COUNTRY", "Германия", "COMPANY", "Ford")
+    add_n3_constraint_relative("southeast", "COUNTRY", "Китай", "COMPANY", "Peugeot")
 
-    # 15. Lada (8) находится юго-восточнее Франции (2)
-    n3_1 = bdd.false
-    for from_, to in southeast_neighbors:
-        n3_1 = n3_1 | (p[COUNTRY][from_][2] & p[COMPANY][to][8])
-    task = task & n3_1
-    print("   1.Lada юго-восточнее Франции")
-
-    # 16. Розовый цвет (7) находится северо-восточнее KIA (4)
-    n3_2 = bdd.false
-    for from_, to in northeast_neighbors:
-        n3_2 = n3_2 | (p[COMPANY][from_][4] & p[COLOR][to][7])
-    task = task & n3_2
-    print("   2.Розовый цвет северо-восточнее KIA")
-
-    # 17. Ford (7) находится северо-восточнее Германии (1)
-    n3_3 = bdd.false
-    for from_, to in northeast_neighbors:
-        n3_3 = n3_3 | (p[COUNTRY][from_][1] & p[COMPANY][to][7])
-    task = task & n3_3
-    print("   3.Ford северо-восточнее Германии")
-
-    # 18. Мощность 410 л.с. (5) находится юго-восточнее Китая (3)
-    n3_4 = bdd.false
-    for from_, to in southeast_neighbors:
-        n3_4 = n3_4 | (p[COUNTRY][from_][3] & p[POWER][to][5])
-    task = task & n3_4
-    print("   4.Мощность 410 л.с. юго-восточнее Китая")
-
-    # 19. Peugeot (2) находится юго-восточнее Китая (3)
-    n3_5 = bdd.false
-    for from_, to in southeast_neighbors:
-        n3_5 = n3_5 | (p[COUNTRY][from_][3] & p[COMPANY][to][2])
-    task = task & n3_5
-    print("   5.Peugeot юго-восточнее Китая")
+    if with_wrap:
+        add_n3_constraint_relative("southeast", "COUNTRY", "Китай", "POWER", "410")
+    else:
+        add_n3_constraint_relative("southeast", "COLOR", "Красный", "POWER", "100")
 
     # TYPE n4 Constraints - СОСЕДСКИЕ ОТНОШЕНИЯ
     print("Adding n4 constraints (neighbor relations)...")
+    add_n4_constraint_neighbors("COUNTRY", "Корея", "COLOR", "Бежевый")
+    add_n4_constraint_neighbors("POWER", "130", "COLOR", "Фиолетовый")
+    add_n4_constraint_neighbors("COUNTRY", "Китай", "COUNTRY", "Япония")
+    add_n4_constraint_neighbors("COUNTRY", "Россия", "COUNTRY", "США")
+    add_n4_constraint_neighbors("COLOR", "Красный", "COMPANY", "Geely")
+    add_n4_constraint_neighbors("POWER", "100", "POWER", "850")
 
-    # 20. Корея (4) соседствует с бежевым цветом (5)
-    n4_1 = bdd.false
-    for a, b in adjacent_neighbors:
-        n4_1 = n4_1 | (p[COUNTRY][a][4] & p[COLOR][b][5]) | (p[COUNTRY][b][4] & p[COLOR][a][5])
-    task = task & n4_1
-    print("   1.Корея соседствует с бежевым цветом")
-
-    # 21. Jaguar (6) соседствует с мощностью 850 л.с. (7)
-    n4_2 = bdd.false
-    for a, b in adjacent_neighbors:
-        n4_2 = n4_2 | (p[COMPANY][a][6] & p[POWER][b][7]) | (p[COMPANY][b][6] & p[POWER][a][7])
-    task = task & n4_2
-    print("   2.Jaguar соседствует с мощностью 850 л.с.")
-
-    # 22. Китай (3) соседствует с Японией (0)
-    n4_3 = bdd.false
-    for a, b in adjacent_neighbors:
-        n4_3 = n4_3 | (p[COUNTRY][a][3] & p[COUNTRY][b][0]) | (p[COUNTRY][b][3] & p[COUNTRY][a][0])
-    task = task & n4_3
-    print("   3.Китай соседствует с Японией")
-
-    # 23. Россия (8) соседствует с США (7)
-    n4_4 = bdd.false
-    for a, b in adjacent_neighbors:
-        n4_4 = n4_4 | (p[COUNTRY][a][8] & p[COUNTRY][b][7]) | (p[COUNTRY][b][8] & p[COUNTRY][a][7])
-    task = task & n4_4
-    print("   4.Россия соседствует с США")
-
-    # 24. Красный цвет (0) соседствует с Geely (3)
-    n4_5 = bdd.false
-    for a, b in adjacent_neighbors:
-        n4_5 = n4_5 | (p[COLOR][a][0] & p[COMPANY][b][3]) | (p[COLOR][b][0] & p[COMPANY][a][3])
-    task = task & n4_5
-    print("   5.Красный цвет соседствует с Geely")
-
-    # 25. Мощность 100 л.с. (0) соседствует с мощностью 850 л.с. (7)
-    n4_6 = bdd.false
-    for a, b in adjacent_neighbors:
-        n4_6 = n4_6 | (p[POWER][a][0] & p[POWER][b][7]) | (p[POWER][b][0] & p[POWER][a][7])
-    task = task & n4_6
-    print("   6.Мощность 100 л.с. соседствует с мощностью 850 л.с.")
-
-    # 26. Мощность 130 л.с. (2) соседствует с фиолетовым цветом (6)
-    n4_7 = bdd.false
-    for a, b in adjacent_neighbors:
-        n4_7 = n4_7 | (p[POWER][a][2] & p[COLOR][b][6]) | (p[POWER][b][2] & p[COLOR][a][6])
-    task = task & n4_7
-    print("   7.Мощность 130 л.с. соседствует с фиолетовым цветом")
+    if with_wrap:
+        add_n4_constraint_neighbors("COMPANY", "Jaguar", "POWER", "850")
 
     # Ограничения уникальности
     print("Adding uniqueness constraints...")
     for k in range(4):
-        print(f"  Property {k}...")
+        property_names = ["Страна", "Компания", "Мощность", "Цвет"]
+        print(f"  Свойство {property_names[k]}...")
         for j in range(N):
             for i1 in range(N):
                 for i2 in range(i1 + 1, N):
@@ -250,6 +271,8 @@ def solve_factories_bdd_dd():
     # Проверяем выполнимость
     if task == bdd.false:
         print("No solutions found! Constraints are inconsistent.")
+        output_file.write("Решения не найдены! Ограничения противоречивы.\n")
+        output_file.close()
         return
 
     # Поиск решений
@@ -275,14 +298,17 @@ def solve_factories_bdd_dd():
 
     solutions = bdd.pick_iter(task, care_vars=var_names)
 
-    positions = [
-        "0 ЛВ", "1 В", "2 ПВ",
-        "3 Л", "4 Ц", "5 П",
-        "6 ЛН", "7 Н", "8 ПН"
-    ]
-
     valid_solutions = 0
     max_solutions = 2000
+
+    # Определяем максимальные длины для выравнивания
+    max_country_len = max(len(country) for country in countries)
+    max_company_len = max(len(company) for company in companies)
+    max_power_len = max(len(power) for power in powers)
+    max_color_len = max(len(color) for color in colors)
+
+    # Вычисляем ширину ячейки
+    cell_width = max_country_len + max_company_len + max_power_len + max_color_len + 3
 
     for model in solutions:
         valid_solutions += 1
@@ -301,19 +327,37 @@ def solve_factories_bdd_dd():
 
             solution_data.append((country_name, company_name, power_name, color_name))
 
-        print(f"\n--- Решение {valid_solutions} ---")
-        print("Позиция  | Страна   | Компания | Мощность | Цвет")
-        print("-" * 80)
+        # Вывод в файл - матричный формат с выравниванием
+        output_file.write(f"\n--- Решение {valid_solutions} ---\n")
 
-        for i in range(N):
-            country_name, company_name, power_name, color_name = solution_data[i]
-            print(f"{positions[i]}: {country_name:8} | {company_name:8} | "
-                  f"{power_name:>6} | {color_name:8}")
+        # Верхняя граница таблицы
+        separator = "+" + "-" * (cell_width + 2) + "+" + "-" * (cell_width + 2) + "+" + "-" * (cell_width + 2) + "+\n"
+        output_file.write(separator)
+
+        for row in range(3):
+            line = "|"
+            for col in range(3):
+                idx = row * 3 + col
+                country, company, power, color = solution_data[idx]
+                # Форматируем ячейку с выравниванием
+                cell_content = f" {country:<{max_country_len}} {company:<{max_company_len}} {power:>{max_power_len}} {color:<{max_color_len}} "
+                line += cell_content + "|"
+            output_file.write(line + "\n")
+
+            # Добавляем разделитель между строками (кроме последней)
+            if row < 2:
+                output_file.write(separator)
+
+        # Нижняя граница таблицы
+        output_file.write(separator)
 
         if valid_solutions >= max_solutions:
             break
 
     print(f"\nTotal solutions found: {valid_solutions}")
+    output_file.write(f"\nВсего найдено решений: {valid_solutions}\n")
+    output_file.write(f"Режим работы: {'Со склейкой' if with_wrap else 'Без склейки'}\n")
+    output_file.close()
 
 
 if __name__ == "__main__":
