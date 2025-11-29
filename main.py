@@ -139,7 +139,7 @@ def solve_factories_bdd_dd():
         print(f"   {description}")
         return description
 
-    def add_n3_constraint_relative(direction, from_property_name, from_value_name, to_property_name, to_value_name):
+    def add_n3_constraint(direction, from_property_name, from_value_name, to_property_name, to_value_name):
         nonlocal task
         from_property = get_property_index(from_property_name)
         from_value = get_value_index(from_property_name, from_value_name)
@@ -166,7 +166,7 @@ def solve_factories_bdd_dd():
         print(f"   {description}")
         return description
 
-    def add_n4_constraint_neighbors(property1_name, value1_name, property2_name, value2_name):
+    def add_n4_constraint(property1_name, value1_name, property2_name, value2_name):
         nonlocal task
         property1 = get_property_index(property1_name)
         value1 = get_value_index(property1_name, value1_name)
@@ -207,26 +207,26 @@ def solve_factories_bdd_dd():
         add_n2_constraint("COMPANY", "Peugeot", "POWER", "110")
 
     print("Ограничения третьего типа:")
-    add_n3_constraint_relative("southeast", "COUNTRY", "Франция", "COMPANY", "Lada")
-    add_n3_constraint_relative("northeast", "COMPANY", "Kia", "COLOR", "Розовый")
-    add_n3_constraint_relative("northeast", "COUNTRY", "Германия", "COMPANY", "Ford")
-    add_n3_constraint_relative("southeast", "COUNTRY", "Китай", "COMPANY", "Peugeot")
+    add_n3_constraint("southeast", "COUNTRY", "Франция", "COMPANY", "Lada")
+    add_n3_constraint("northeast", "COMPANY", "Kia", "COLOR", "Розовый")
+    add_n3_constraint("northeast", "COUNTRY", "Германия", "COMPANY", "Ford")
+    add_n3_constraint("southeast", "COUNTRY", "Китай", "COMPANY", "Peugeot")
 
     if with_wrap:
-        add_n3_constraint_relative("southeast", "COUNTRY", "Китай", "POWER", "410")
+        add_n3_constraint("southeast", "COUNTRY", "Китай", "POWER", "410")
     else:
-        add_n3_constraint_relative("southeast", "COLOR", "Красный", "POWER", "100")
+        add_n3_constraint("southeast", "COLOR", "Красный", "POWER", "100")
 
     print("Ограничения четвертого типа:")
-    add_n4_constraint_neighbors("COUNTRY", "Корея", "COLOR", "Бежевый")
-    add_n4_constraint_neighbors("POWER", "130", "COLOR", "Фиолетовый")
-    add_n4_constraint_neighbors("COUNTRY", "Китай", "COUNTRY", "Япония")
-    add_n4_constraint_neighbors("COUNTRY", "Россия", "COUNTRY", "США")
-    add_n4_constraint_neighbors("COLOR", "Красный", "COMPANY", "Geely")
-    add_n4_constraint_neighbors("POWER", "100", "POWER", "850")
+    add_n4_constraint("COUNTRY", "Корея", "COLOR", "Бежевый")
+    add_n4_constraint("POWER", "130", "COLOR", "Фиолетовый")
+    add_n4_constraint("COUNTRY", "Китай", "COUNTRY", "Япония")
+    add_n4_constraint("COUNTRY", "Россия", "COUNTRY", "США")
+    add_n4_constraint("COLOR", "Красный", "COMPANY", "Geely")
+    add_n4_constraint("POWER", "100", "POWER", "850")
 
     if with_wrap:
-        add_n4_constraint_neighbors("COMPANY", "Jaguar", "POWER", "850")
+        add_n4_constraint("COMPANY", "Jaguar", "POWER", "850")
 
 
     print("Уникальность:")
